@@ -9,9 +9,9 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY") or os.environ.get("GEMINI_API_KEY")
 
-# Configure Gemini AI Standard SDK
-genai.configure(api_key=GEMINI_KEY)
-ai_model = genai.GenerativeModel('gemini-1.5-flash')
+# Configure Gemini AI
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY.strip())
 
 # Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -31,16 +31,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
     try:
+        # Fallback list of models to try
+        model = genai.GenerativeModel('gemini-1.5-flash')
         prompt = (
             "You are an intelligent, friendly Movie Assistant. "
             "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
             f"User Question: {user_text}"
         )
-        response = ai_model.generate_content(prompt)
+        response = model.generate_content(prompt)
         await update.message.reply_text(response.text)
     except Exception as e:
-        print(f"Gemini Error: {e}")
-        await update.message.reply_text("ခဏနေမှ ပြန်လည်မေးမြန်းပေးပါ၊ AI ချိတ်ဆက်မှုတွင် အနည်းငယ် ကြန့်ကြာနေပါသည်။")
+        error_msg = str(e)
+        print(f"Gemini API Error Log: {error_msg}")
+        # Telegram သို့ Error စာတန်း အတိအကျ ပြပေးရန်
+        await update.message.reply_text(f"AI Error တက်နေပါသည်: {error_msg[:150]}")
 
 def start_bot_loop():
     loop = asyncio.new_event_loop()
