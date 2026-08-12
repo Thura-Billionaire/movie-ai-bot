@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
-# Telegram Bot Handlers
+# Telegram Bot Handler Logic
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_first_name = update.effective_user.first_name
     keyboard = [
@@ -23,29 +23,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await update.message.reply_text(f"AI က သင့်မေးခွန်းကို လက်ခံရရှိပါပြီ - '{user_text}'")
 
-def run_async_bot():
+def start_bot_loop():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    bot_app = Application.builder().token(TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Run polling smoothly without locking thread
-    app.run_polling(drop_pending_updates=True, stop_signals=None)
+    # Initialize and start polling safely without signal handler conflicts
+    loop.run_until_complete(bot_app.initialize())
+    loop.run_until_complete(bot_app.updater.start_polling(drop_pending_updates=True))
+    loop.run_until_complete(bot_app.start())
+    loop.run_forever()
 
-# Flask Server for Render Keep-Alive
-flask_app = Flask(__name__)
+# Flask Server Setup
+app = Flask(__name__)
 
-@flask_app.route('/')
+@app.route('/')
 def home():
-    return "Bot status: Running Live"
+    return "Bot is Running Live"
 
-# Start Async Bot Thread
-bot_thread = Thread(target=run_async_bot, daemon=True)
+# Start Background Thread
+bot_thread = Thread(target=start_bot_loop, daemon=True)
 bot_thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    flask_app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port)
     
