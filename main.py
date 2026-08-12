@@ -9,32 +9,18 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY") or os.environ.get("GEMINI_API_KEY")
 
-def get_active_gemini_model(api_key):
-    """Find an available model automatically from Google API"""
-    try:
-        list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
-        res = requests.get(list_url, timeout=10)
-        if res.status_code == 200:
-            models_data = res.json().get('models', [])
-            for m in models_data:
-                # Look for flash or pro models that support generateContent
-                if 'generateContent' in m.get('supportedGenerationMethods', []):
-                    model_name = m.get('name')
-                    if 'flash' in model_name or 'pro' in model_name:
-                        return model_name
-    except Exception:
-        pass
-    # Default fallback models if listing fails
-    return "models/gemini-1.5-flash"
-
 def call_gemini_api(user_prompt):
     if not GEMINI_KEY:
         return "Gemini API Key ထည့်သွင်းထားခြင်း မရှိသေးပါ။"
         
     api_key = GEMINI_KEY.strip()
-    selected_model = get_active_gemini_model(api_key)
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/{selected_model}:generateContent?key={api_key}"
+    # List of endpoints to try in order
+    endpoints = [
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    ]
     
     headers = {'Content-Type': 'application/json'}
     payload = {
@@ -49,15 +35,19 @@ def call_gemini_api(user_prompt):
         }]
     }
     
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=25)
-        if response.status_code == 200:
-            data = response.json()
-            return data['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"API Error: {response.status_code} - Gemini API Key ကို အသစ်ပြန်ယူ၍ Render တွင် ပြန်ထည့်ပေးပါ။"
-    except Exception as e:
-        return "ချိတ်ဆက်မှု ကြန့်ကြာနေပါသည်၊ ခဏနေမှ ပြန်လည်စမ်းသပ်ပေးပါ။"
+    last_status = None
+    for url in endpoints:
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=20)
+            if response.status_code == 200:
+                data = response.json()
+                return data['candidates'][0]['content']['parts'][0]['text']
+            else:
+                last_status = response.status_code
+        except Exception:
+            continue
+            
+    return f"API Error: {last_status} - Gemini API Key သို့မဟုတ် VPN Network စစ်ဆေးပေးပါ။ Google AI Studio မှ Key အသစ် ပြန်ထုတ်ပေးပါရန်။"
 
 # Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
