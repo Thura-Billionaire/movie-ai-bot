@@ -30,8 +30,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
-    # Try models in order of availability
-    candidate_models = ['gemini-1.5-flash-latest', 'gemini-1.5-pro', 'gemini-pro']
+    # Corrected Model names with models/ prefix
+    candidate_models = [
+        'models/gemini-1.5-flash',
+        'models/gemini-1.5-pro',
+        'models/gemini-pro',
+        'gemini-1.5-flash',
+        'gemini-pro'
+    ]
+    
     response_text = None
     last_error = None
 
@@ -55,7 +62,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if response_text:
         await update.message.reply_text(response_text)
     else:
-        await update.message.reply_text("ခဏနေမှ ပြန်လည်မေးမြန်းပေးပါ၊ AI ချိတ်ဆက်မှု အနည်းငယ် ငြိမ်အောင် ပြန်လည်စမ်းသပ်နေပါသည်။")
+        # Fallback to list available models if all hardcoded ones fail
+        try:
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            if available_models:
+                fallback_model = genai.GenerativeModel(available_models[0])
+                res = fallback_model.generate_content(prompt)
+                await update.message.reply_text(res.text)
+                return
+        except Exception as ex:
+            last_error = ex
+            
+        await update.message.reply_text(f"AI Error: {str(last_error)[:150]}")
 
 def start_bot_loop():
     loop = asyncio.new_event_loop()
