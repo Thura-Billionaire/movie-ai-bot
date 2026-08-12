@@ -2,15 +2,16 @@ import os
 import asyncio
 from flask import Flask
 from threading import Thread
-from google import genai
+import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY") or os.environ.get("GEMINI_API_KEY")
 
-# Gemini Client Setup
-ai_client = genai.Client(api_key=GEMINI_KEY)
+# Configure Gemini AI Standard SDK
+genai.configure(api_key=GEMINI_KEY)
+ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -30,13 +31,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
     try:
-        system_instruction = "You are an intelligent, friendly Movie Assistant. Recommend movies, summarize plots, and reply clearly in Myanmar language."
-        response = ai_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=f"{system_instruction}\nUser Question: {user_text}"
+        prompt = (
+            "You are an intelligent, friendly Movie Assistant. "
+            "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
+            f"User Question: {user_text}"
         )
+        response = ai_model.generate_content(prompt)
         await update.message.reply_text(response.text)
     except Exception as e:
+        print(f"Gemini Error: {e}")
         await update.message.reply_text("ခဏနေမှ ပြန်လည်မေးမြန်းပေးပါ၊ AI ချိတ်ဆက်မှုတွင် အနည်းငယ် ကြန့်ကြာနေပါသည်။")
 
 def start_bot_loop():
@@ -66,4 +69,3 @@ bot_thread.start()
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
-    
