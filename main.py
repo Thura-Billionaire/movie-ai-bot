@@ -1,17 +1,54 @@
 import os
 import asyncio
+import requests
 from flask import Flask
 from threading import Thread
-import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY") or os.environ.get("GEMINI_API_KEY")
 
-# Configure Gemini AI
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY.strip())
+# Direct Gemini API Request Function
+def call_gemini_api(user_prompt):
+    if not GEMINI_KEY:
+        return "Gemini API Key ထည့်သွင်းထားခြင်း မရှိသေးပါ။"
+        
+    api_key = GEMINI_KEY.strip()
+    
+    # Try gemini-1.5-flash endpoint directly via REST API
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{
+            "parts": [{
+                "text": (
+                    "You are an intelligent, friendly Movie Assistant. "
+                    "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
+                    f"User Question: {user_prompt}"
+                )
+            }]
+        }]
+    }
+    
+    response = requests.post(url, headers=headers, json=payload, timeout=20)
+    
+    if response.status_code == 200:
+        data = response.json()
+        try:
+            return data['candidates'][0]['content']['parts'][0]['text']
+        except (KeyError, IndexError):
+            return "AI မှ အဖြေထုတ်ပေးရာတွင် အမှားအယွင်းရှိနေပါသည်။"
+    else:
+        # Fallback to gemini-pro if flash fails
+        url_pro = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+        res_pro = requests.post(url_pro, headers=headers, json=payload, timeout=20)
+        if res_pro.status_code == 200:
+            data_pro = res_pro.json()
+            return data_pro['candidates'][0]['content']['parts'][0]['text']
+        else:
+            return f"API Error Code: {response.status_code} - ခဏနေမှ ပြန်လည်စမ်းသပ်ပေးပါ၊ Gemini API Key သို့မဟုတ် Network အဆင်မပြေပါ။"
 
 # Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -30,50 +67,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
-    # Corrected Model names with models/ prefix
-    candidate_models = [
-        'models/gemini-1.5-flash',
-        'models/gemini-1.5-pro',
-        'models/gemini-pro',
-        'gemini-1.5-flash',
-        'gemini-pro'
-    ]
+    # Run API request in a thread so it doesn't block Telegram's async loop
+    loop = asyncio.get_running_loop()
+    ai_response = await loop.run_in_executor(None, call_gemini_api, user_text)
     
-    response_text = None
-    last_error = None
-
-    prompt = (
-        "You are an intelligent, friendly Movie Assistant. "
-        "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
-        f"User Question: {user_text}"
-    )
-
-    for model_name in candidate_models:
-        try:
-            model = genai.GenerativeModel(model_name)
-            res = model.generate_content(prompt)
-            if res and res.text:
-                response_text = res.text
-                break
-        except Exception as e:
-            last_error = e
-            continue
-
-    if response_text:
-        await update.message.reply_text(response_text)
-    else:
-        # Fallback to list available models if all hardcoded ones fail
-        try:
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            if available_models:
-                fallback_model = genai.GenerativeModel(available_models[0])
-                res = fallback_model.generate_content(prompt)
-                await update.message.reply_text(res.text)
-                return
-        except Exception as ex:
-            last_error = ex
-            
-        await update.message.reply_text(f"AI Error: {str(last_error)[:150]}")
+    await update.message.reply_text(ai_response)
 
 def start_bot_loop():
     loop = asyncio.new_event_loop()
