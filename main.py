@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
-# Telegram Bot Handler Logic
+# Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_first_name = update.effective_user.first_name
     keyboard = [
@@ -23,33 +23,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await update.message.reply_text(f"AI က သင့်မေးခွန်းကို လက်ခံရရှိပါပြီ - '{user_text}'")
 
-def run_bot_loop():
+def run_async_bot():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Run polling safely inside dedicated asyncio loop
-    loop.run_until_complete(application.initialize())
-    loop.run_until_complete(application.updater.start_polling(drop_pending_updates=True))
-    loop.run_until_complete(application.start())
-    loop.run_forever()
+    # Run polling smoothly without locking thread
+    app.run_polling(drop_pending_updates=True, stop_signals=None)
 
-# Flask Server Setup for Render Health Checks
-app = Flask(__name__)
+# Flask Server for Render Keep-Alive
+flask_app = Flask(__name__)
 
-@app.route('/')
+@flask_app.route('/')
 def home():
-    return "Bot is Running Live"
+    return "Bot status: Running Live"
 
-# Start Bot Thread
-bot_thread = Thread(target=run_bot_loop)
-bot_thread.daemon = True
+# Start Async Bot Thread
+bot_thread = Thread(target=run_async_bot, daemon=True)
 bot_thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    flask_app.run(host='0.0.0.0', port=port)
     
