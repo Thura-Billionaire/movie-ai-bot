@@ -15,11 +15,13 @@ def call_gemini_api(user_prompt):
         
     api_key = GEMINI_KEY.strip()
     
-    # List of endpoints to try in order
-    endpoints = [
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}",
-        f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # List of models and API versions to try
+    models_to_try = [
+        ("v1beta", "gemini-1.5-flash"),
+        ("v1beta", "gemini-1.5-pro"),
+        ("v1beta", "gemini-2.0-flash"),
+        ("v1", "gemini-1.5-flash"),
+        ("v1beta", "gemini-pro")
     ]
     
     headers = {'Content-Type': 'application/json'}
@@ -35,19 +37,21 @@ def call_gemini_api(user_prompt):
         }]
     }
     
-    last_status = None
-    for url in endpoints:
+    last_error_msg = ""
+    for ver, model in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/{ver}/models/{model}:generateContent?key={api_key}"
         try:
             response = requests.post(url, headers=headers, json=payload, timeout=20)
             if response.status_code == 200:
                 data = response.json()
                 return data['candidates'][0]['content']['parts'][0]['text']
             else:
-                last_status = response.status_code
-        except Exception:
+                last_error_msg = f"Status {response.status_code}: {response.text[:100]}"
+        except Exception as e:
+            last_error_msg = str(e)
             continue
             
-    return f"API Error: {last_status} - Gemini API Key သို့မဟုတ် VPN Network စစ်ဆေးပေးပါ။ Google AI Studio မှ Key အသစ် ပြန်ထုတ်ပေးပါရန်။"
+    return f"AI Error: {last_error_msg}"
 
 # Telegram Bot Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
