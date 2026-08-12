@@ -23,13 +23,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await update.message.reply_text(f"AI က သင့်မေးခွန်းကို လက်ခံရရှိပါပြီ - '{user_text}'")
 
-def start_bot():
+def run_bot_loop():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.run_polling(drop_pending_updates=True)
+    
+    # Run polling safely inside dedicated asyncio loop
+    loop.run_until_complete(application.initialize())
+    loop.run_until_complete(application.updater.start_polling(drop_pending_updates=True))
+    loop.run_until_complete(application.start())
+    loop.run_forever()
 
 # Flask Server Setup for Render Health Checks
 app = Flask(__name__)
@@ -38,8 +44,8 @@ app = Flask(__name__)
 def home():
     return "Bot is Running Live"
 
-# Run Bot in Background Thread
-bot_thread = Thread(target=start_bot)
+# Start Bot Thread
+bot_thread = Thread(target=run_bot_loop)
 bot_thread.daemon = True
 bot_thread.start()
 
