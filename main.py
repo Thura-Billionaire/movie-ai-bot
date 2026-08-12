@@ -30,21 +30,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
-    try:
-        # Fallback list of models to try
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = (
-            "You are an intelligent, friendly Movie Assistant. "
-            "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
-            f"User Question: {user_text}"
-        )
-        response = model.generate_content(prompt)
-        await update.message.reply_text(response.text)
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Gemini API Error Log: {error_msg}")
-        # Telegram သို့ Error စာတန်း အတိအကျ ပြပေးရန်
-        await update.message.reply_text(f"AI Error တက်နေပါသည်: {error_msg[:150]}")
+    # Try models in order of availability
+    candidate_models = ['gemini-1.5-flash-latest', 'gemini-1.5-pro', 'gemini-pro']
+    response_text = None
+    last_error = None
+
+    prompt = (
+        "You are an intelligent, friendly Movie Assistant. "
+        "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
+        f"User Question: {user_text}"
+    )
+
+    for model_name in candidate_models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            res = model.generate_content(prompt)
+            if res and res.text:
+                response_text = res.text
+                break
+        except Exception as e:
+            last_error = e
+            continue
+
+    if response_text:
+        await update.message.reply_text(response_text)
+    else:
+        await update.message.reply_text("ခဏနေမှ ပြန်လည်မေးမြန်းပေးပါ၊ AI ချိတ်ဆက်မှု အနည်းငယ် ငြိမ်အောင် ပြန်လည်စမ်းသပ်နေပါသည်။")
 
 def start_bot_loop():
     loop = asyncio.new_event_loop()
