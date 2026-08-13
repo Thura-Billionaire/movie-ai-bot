@@ -1,40 +1,55 @@
 import os
 import asyncio
+import requests
 from flask import Flask
 from threading import Thread
-import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY") or os.environ.get("GEMINI_API_KEY")
 
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY.strip())
-
 def call_gemini_api(user_prompt):
     if not GEMINI_KEY:
-        return "⚠️ Gemini API Key ထည့်သွင်းထားခြင်း မရှိသေးပါ။"
+        return "⚠️ Render Environment တွင် GEMINI_KEY ထည့်သွင်းထားခြင်း မရှိသေးပါ။"
         
-    system_instruction = (
-        "You are an intelligent, friendly Movie Assistant. "
-        "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
-        f"User Question: {user_prompt}"
-    )
+    api_key = GEMINI_KEY.strip()
     
-    # Try using official SDK model names
-    models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+    # Try all active endpoint versions and model aliases
+    urls_to_try = [
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}",
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={api_key}"
+    ]
     
-    for model_name in models_to_try:
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{
+            "parts": [{
+                "text": (
+                    "You are an intelligent, friendly Movie Assistant. "
+                    "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
+                    f"User Question: {user_prompt}"
+                )
+            }]
+        }]
+    }
+    
+    last_error = ""
+    for url in urls_to_try:
         try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(system_instruction)
-            if response and response.text:
-                return response.text
-        except Exception:
+            res = requests.post(url, headers=headers, json=payload, timeout=20)
+            if res.status_code == 200:
+                data = res.json()
+                return data['candidates'][0]['content']['parts'][0]['text']
+            else:
+                last_error = f"Status {res.status_code}: {res.text}"
+        except Exception as e:
+            last_error = str(e)
             continue
             
-    return "⚠️ API Key စစ်ဆေးရန် လိုအပ်နေပါသည်။ Google AI Studio (aistudio.google.com) မှ API Key အသစ်တစ်ခု ပြန်ထုတ်ပေးပါရန်။"
+    return f"⚠️ API Error: {last_error}"
 
 # Telegram Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,4 +99,3 @@ if __name__ == '__main__':
     
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
-    
