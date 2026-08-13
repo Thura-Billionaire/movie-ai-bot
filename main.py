@@ -1,54 +1,43 @@
 import os
 import asyncio
-import requests
 from flask import Flask
 from threading import Thread
+from google import genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_KEY") or os.environ.get("GEMINI_API_KEY")
 
+# Initialize Gemini Client
+client = genai.Client(api_key=GEMINI_KEY.strip()) if GEMINI_KEY else None
+
 def call_gemini_api(user_prompt):
-    if not GEMINI_KEY:
+    if not client:
         return "⚠️ Render Environment တွင် GEMINI_KEY ထည့်သွင်းထားခြင်း မရှိသေးပါ။"
         
-    api_key = GEMINI_KEY.strip()
-    
-    # Official stable Gemini models endpoint
-    urls_to_try = [
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}",
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}",
-        f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # List of stable models to fallback
+    models_to_try = [
+        'gemini-2.5-flash',
+        'gemini-1.5-flash',
+        'gemini-1.5-flash-8b',
+        'gemini-1.5-pro'
     ]
     
-    headers = {'Content-Type': 'application/json'}
-    payload = {
-        "contents": [{
-            "parts": [{
-                "text": (
-                    "You are an intelligent, friendly Movie Assistant. "
-                    "Recommend movies, summarize plots, and reply clearly in Myanmar language.\n"
-                    f"User Question: {user_prompt}"
-                )
-            }]
-        }]
-    }
-    
-    last_error = ""
-    for url in urls_to_try:
+    last_err = ""
+    for model_name in models_to_try:
         try:
-            res = requests.post(url, headers=headers, json=payload, timeout=20)
-            if res.status_code == 200:
-                data = res.json()
-                return data['candidates'][0]['content']['parts'][0]['text']
-            else:
-                last_error = f"Status {res.status_code}: {res.text}"
+            response = client.models.generate_content(
+                model=model_name,
+                contents=f"You are an intelligent, friendly Movie Assistant. Recommend movies, summarize plots, and reply clearly in Myanmar language.\nUser Question: {user_prompt}"
+            )
+            if response and response.text:
+                return response.text
         except Exception as e:
-            last_error = str(e)
+            last_err = str(e)
             continue
             
-    return f"⚠️ API Error: {last_error}"
+    return f"⚠️ API Error: {last_err}"
 
 # Telegram Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
